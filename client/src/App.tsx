@@ -11,7 +11,8 @@ interface ScanProgress {
   progress: number;
 }
 
-const socket: Socket = io('http://localhost:3001');
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const socket: Socket = io(API_URL);
 
 function App() {
   const [status, setStatus] = useState<'IDLE' | 'SCANNING' | 'COMPLETE'>('IDLE');
@@ -42,7 +43,7 @@ function App() {
     setStatus('SCANNING');
     setProgress({ message: 'Initializing scan...', progress: 0 });
     try {
-      await fetch('http://localhost:3001/api/scan', {
+      await fetch(`${API_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url })
