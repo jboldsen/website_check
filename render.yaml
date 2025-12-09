@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: website-check-server
+    env: node
+    rootDir: server
+    buildCommand: npm install && npm run build && npx playwright install chromium
+    startCommand: npm start
+    envVars:
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/server/playwright-browsers
+      - key: NODE_VERSION
+        value: 20.11.0

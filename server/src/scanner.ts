@@ -18,7 +18,15 @@ export async function runScan(startUrl: string, scanId: string, io: Server) {
     const pages = await crawlSite(startUrl);
     io.emit('scan:progress', { scanId, message: `Found ${pages.length} pages.`, progress: 20 });
 
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu'
+        ]
+    });
     const context = await browser.newContext();
 
     const BREAKPOINTS = [
