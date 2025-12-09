@@ -1,42 +1,63 @@
 export interface Issue {
-    category: 'Performance' | 'Responsiveness' | 'Interaction' | 'Accessibility' | 'Error' | 'SEO';
+    category: 'Performance' | 'Responsiveness & Layout' | 'Accessibility' | 'SEO' | 'Errors & Reliability' | 'Best Practices';
     severity: 'Critical' | 'Major' | 'Minor' | 'Suggestion';
     title: string;
     description: string;
     affectedUrl: string;
 }
 
+export interface PageReport {
+    url: string;
+    score: number;
+    metrics: {
+        lcp?: number;
+        fcp?: number;
+        cls?: number;
+        duration?: number;
+    };
+    categoryScores: {
+        Performance: number;
+        'Responsiveness & Layout': number;
+        Accessibility: number;
+        SEO: number;
+        'Errors & Reliability': number;
+        'Best Practices': number;
+    };
+    issues: Issue[];
+}
+
 export interface ScoreReport {
     overallScore: number;
     categories: {
         Performance: number;
-        Responsiveness: number;
-        Interaction: number;
+        'Responsiveness & Layout': number;
         Accessibility: number;
-        Error: number;
         SEO: number;
+        'Errors & Reliability': number;
+        'Best Practices': number;
     };
     details: Issue[];
+    pages: PageReport[];
 }
 
 const WEIGHTS = {
-    Performance: 0.30,
-    Responsiveness: 0.25,
-    Interaction: 0.20,
-    Accessibility: 0.10,
-    Error: 0.10,
-    SEO: 0.05
+    Performance: 0.25,
+    'Responsiveness & Layout': 0.20,
+    Accessibility: 0.15,
+    SEO: 0.15,
+    'Errors & Reliability': 0.15,
+    'Best Practices': 0.10
 };
 
-export function calculateScore(issues: Issue[]): ScoreReport {
+export function calculateScore(issues: Issue[], pages: PageReport[] = []): ScoreReport {
     // Start with 100 for each category
     const scores = {
         Performance: 100,
-        Responsiveness: 100,
-        Interaction: 100,
+        'Responsiveness & Layout': 100,
         Accessibility: 100,
-        Error: 100,
-        SEO: 100
+        SEO: 100,
+        'Errors & Reliability': 100,
+        'Best Practices': 100
     };
 
     // Deduced points per severity
@@ -54,15 +75,16 @@ export function calculateScore(issues: Issue[]): ScoreReport {
     // Calculate weighted average
     let totalWeighted = 0;
     totalWeighted += scores.Performance * WEIGHTS.Performance;
-    totalWeighted += scores.Responsiveness * WEIGHTS.Responsiveness;
-    totalWeighted += scores.Interaction * WEIGHTS.Interaction;
+    totalWeighted += scores['Responsiveness & Layout'] * WEIGHTS['Responsiveness & Layout'];
     totalWeighted += scores.Accessibility * WEIGHTS.Accessibility;
-    totalWeighted += scores.Error * WEIGHTS.Error;
     totalWeighted += scores.SEO * WEIGHTS.SEO;
+    totalWeighted += scores['Errors & Reliability'] * WEIGHTS['Errors & Reliability'];
+    totalWeighted += scores['Best Practices'] * WEIGHTS['Best Practices'];
 
     return {
         overallScore: Math.round(totalWeighted),
         categories: scores,
-        details: issues
+        details: issues,
+        pages
     };
 }

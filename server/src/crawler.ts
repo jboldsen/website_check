@@ -6,9 +6,9 @@ export interface CrawledPage {
     depth: number;
 }
 
-export async function crawlSite(startUrl: string, maxDepth: number = 3, maxPages: number = 20): Promise<string[]> {
-    const visited = new Set<string>();
-    const queue: { url: string; depth: number }[] = [{ url: startUrl, depth: 0 }];
+export async function crawlSite(startUrl: string, maxDepth: number = 3, maxPages: number = 20): Promise<{ url: string; referrer: string | null }[]> {
+    const visited = new Map<string, string | null>();
+    const queue: { url: string; depth: number; referrer: string | null }[] = [{ url: startUrl, depth: 0, referrer: null }];
     const domain = new URL(startUrl).hostname;
 
     const browser = await chromium.launch();
@@ -16,14 +16,16 @@ export async function crawlSite(startUrl: string, maxDepth: number = 3, maxPages
 
     try {
         while (queue.length > 0 && visited.size < maxPages) {
-            const { url, depth } = queue.shift()!;
+            const { url, depth, referrer } = queue.shift()!;
 
             if (visited.has(url)) continue;
             if (depth > maxDepth) continue;
 
+            // Mark as visited before navigation to avoid loops, store referrer
+            visited.set(url, referrer);
+
             try {
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-                visited.add(url);
 
                 if (depth < maxDepth) {
                     const links = await page.$$eval('a', (anchors) =>
@@ -35,12 +37,11 @@ export async function crawlSite(startUrl: string, maxDepth: number = 3, maxPages
                             const linkUrl = new URL(link);
                             // Only internal links
                             if (linkUrl.hostname === domain && !visited.has(link)) {
-                                // simple deduplication of querystrings for now? 
-                                // Request said "Exclude querystring variations unless they represent unique pages"
-                                // For simplicity, we'll strip fragments.
                                 const cleanLink = link.split('#')[0];
                                 if (!visited.has(cleanLink)) {
-                                    queue.push({ url: cleanLink, depth: depth + 1 });
+                                    // Use original cleanLink for queue to avoid reprocessing
+                                    // Pass current 'url' as referrer for these new links
+                                    queue.push({ url: cleanLink, depth: depth + 1, referrer: url });
                                 }
                             }
                         } catch (e) {
@@ -50,13 +51,14 @@ export async function crawlSite(startUrl: string, maxDepth: number = 3, maxPages
                 }
             } catch (err) {
                 console.error(`Failed to crawl ${url}:`, err);
-                // Add to visited so we don't retry infinite fail
-                visited.add(url);
+                // Even if failed, we visited it (tried to). 
+                // We keep it in map so we return it and runScan can detect the failure/404 itself
             }
         }
     } finally {
         await browser.close();
     }
 
-    return Array.from(visited);
+    // Convert Map to array of objects
+    return Array.from(visited.entries()).map(([url, referrer]) => ({ url, referrer }));
 }

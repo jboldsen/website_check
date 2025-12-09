@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { ScoreReport, Issue } from '../types';
+import type { ScoreReport, Issue, PageReport } from '../types';
 
 interface ReportDashboardProps {
     report: ScoreReport;
@@ -53,6 +53,70 @@ const IssueItem: React.FC<{ issue: Issue }> = ({ issue }) => {
     );
 };
 
+const PageAccordion: React.FC<{ page: PageReport }> = ({ page }) => {
+    const [expanded, setExpanded] = useState(false);
+
+    const getScoreColor = (score: number) => {
+        if (score < 50) return 'var(--danger)';
+        if (score < 80) return 'var(--warning)';
+        return 'var(--success)';
+    };
+
+    const color = getScoreColor(page.score);
+
+    return (
+        <div className="page-accordion">
+            <div className="page-header" onClick={() => setExpanded(!expanded)}>
+                <div className="page-score-badge" style={{ color: color, borderColor: color }}>
+                    {page.score}
+                </div>
+                <div className="page-url" title={page.url}>{page.url}</div>
+                <div className="toggle-icon">{expanded ? '−' : '+'}</div>
+            </div>
+
+            {expanded && (
+                <div className="page-details">
+                    <div className="page-metrics-grid">
+                        <div className="metric-card">
+                            <div className="metric-label">Load Time</div>
+                            <div className="metric-value">
+                                {page.metrics.lcp ? `${Math.round(page.metrics.lcp)}ms` : (page.metrics.duration ? `${Math.round(page.metrics.duration)}ms` : 'N/A')}
+                            </div>
+                        </div>
+                        <div className="metric-card">
+                            <div className="metric-label">Performance</div>
+                            <div className="metric-value" style={{ color: getScoreColor(page.categoryScores.Performance) }}>
+                                {page.categoryScores.Performance}
+                            </div>
+                        </div>
+                        <div className="metric-card">
+                            <div className="metric-label">SEO</div>
+                            <div className="metric-value" style={{ color: getScoreColor(page.categoryScores.SEO) }}>
+                                {page.categoryScores.SEO}
+                            </div>
+                        </div>
+                        <div className="metric-card">
+                            <div className="metric-label">Errors</div>
+                            <div className="metric-value" style={{ color: getScoreColor(page.categoryScores['Errors & Reliability']) }}>
+                                {page.categoryScores['Errors & Reliability']}
+                            </div>
+                        </div>
+                    </div>
+
+                    {page.issues.length > 0 && (
+                        <div className="page-issue-preview">
+                            <h4>Issues on this page ({page.issues.length})</h4>
+                            {page.issues.map((issue, idx) => (
+                                <IssueItem key={idx} issue={issue} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const ReportDashboard: React.FC<ReportDashboardProps> = ({ report }) => {
     const score = report.overallScore;
     let scoreColor = 'var(--success)';
@@ -88,15 +152,46 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({ report }) => {
                 </div>
             </div>
 
+            {report.pages && report.pages.length > 0 && (
+                <div className="pages-section">
+                    <h2>Page Breakdown ({report.pages.length})</h2>
+                    <div className="pages-list">
+                        {[...report.pages].sort((a, b) => a.score - b.score).map((page, idx) => (
+                            <PageAccordion key={idx} page={page} />
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="issues-section">
                 <h2>Detailed Findings ({report.details.length})</h2>
                 {report.details.length === 0 ? (
                     <div className="empty-state">No issues found! Great job.</div>
                 ) : (
                     <div className="issues-list">
-                        {report.details.map((issue, idx) => (
-                            <IssueItem key={idx} issue={issue} />
-                        ))}
+                        {([
+                            'Performance',
+                            'Accessibility',
+                            'SEO',
+                            'Responsiveness & Layout',
+                            'Errors & Reliability',
+                            'Best Practices'
+                        ] as const).map(category => {
+                            const categoryIssues = report.details.filter(issue => issue.category === category);
+                            if (categoryIssues.length === 0) return null;
+
+                            return (
+                                <div key={category} className="category-group">
+                                    <h3 className="category-header">
+                                        {category}
+                                        <span className="category-count-badge">{categoryIssues.length}</span>
+                                    </h3>
+                                    {categoryIssues.map((issue, idx) => (
+                                        <IssueItem key={idx} issue={issue} />
+                                    ))}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -240,6 +335,122 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({ report }) => {
                 gap: 2rem;
             }
         }
+        
+        .pages-section {
+            margin-bottom: 4rem;
+        }
+
+        .pages-section h2 {
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+        }
+
+        .page-accordion {
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .page-header {
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            gap: 1rem;
+            transition: background 0.2s;
+        }
+        .page-header:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .page-score-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border: 2px solid currentColor;
+        }
+
+        .page-url {
+            flex: 1;
+            font-family: monospace;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .page-details {
+            padding: 1.5rem;
+            background: rgba(0,0,0,0.2);
+            border-top: 1px solid var(--border);
+        }
+
+        .page-metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .metric-card {
+            background: rgba(255,255,255,0.03);
+            padding: 0.8rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.3rem;
+            text-transform: uppercase;
+        }
+        .metric-value {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .page-issue-preview {
+            margin-top: 1rem;
+        }
+        .page-issue-preview h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        
+        .category-group {
+            margin-bottom: 2rem;
+        }
+        
+        .category-header {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .category-count-badge {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 0.1rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
         @keyframes progress {
             0% { stroke-dasharray: 0 100; }
         }
