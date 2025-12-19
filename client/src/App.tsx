@@ -4,6 +4,9 @@ import { ScanForm } from './components/ScanForm';
 import { ReportDashboard } from './components/ReportDashboard';
 import './styles/theme.css';
 
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('ALL ENV:', import.meta.env);
+
 import type { ScoreReport } from './types';
 
 interface ScanProgress {
