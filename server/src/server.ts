@@ -125,6 +125,14 @@ async function processQueue() {
 app.use(cors());
 app.use(express.json());
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'scan-server',
+    uptime: process.uptime()
+  });
+});
+
 app.post('/api/scan', async (req, res) => {
     const { url, devices } = req.body;
     if (!url) {
