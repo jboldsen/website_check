@@ -8,7 +8,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*", // Allow all for dev
+        origin: "https://zapmysite.com",
         methods: ["GET", "POST"]
     }
 });
