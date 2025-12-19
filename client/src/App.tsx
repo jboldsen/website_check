@@ -4,9 +4,6 @@ import { ScanForm } from './components/ScanForm';
 import { ReportDashboard } from './components/ReportDashboard';
 import './styles/theme.css';
 
-console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
-console.log('ALL ENV:', import.meta.env);
-
 import type { ScoreReport } from './types';
 
 interface ScanProgress {
@@ -19,7 +16,7 @@ interface QueueInfo {
   estimatedWaitTime: number;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const socket: Socket = io(API_URL);
 
 function App() {
@@ -99,26 +96,33 @@ function App() {
     }
   };
 
-  const startScan = async (url: string, devices: string[]) => {
-    // Initial optimistic state
-    setStatus('QUEUED');
+  const startScan = async (url: string, devices: string[], pageLimit: number) => {
+    // Initial optimistic state - assume scan will start immediately
+    setStatus('SCANNING');
     setProgress({ message: 'Requesting scan...', progress: 0 });
     try {
       const res = await fetch(`${API_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, devices })
+        body: JSON.stringify({ url, devices, pageLimit })
       });
       if (res.ok) {
         const data = await res.json();
         const scanId = data.scanId;
 
-        // Set initial queue info from response
-        if (data.queuePosition && data.estimatedWaitTime !== undefined) {
+        // Check if scan is starting immediately or queued
+        if (data.queuePosition !== undefined && data.estimatedWaitTime !== undefined) {
+          // Scan is queued
+          setStatus('QUEUED');
           setQueueInfo({
             position: data.queuePosition,
             estimatedWaitTime: data.estimatedWaitTime
           });
+        } else {
+          // Scan is starting immediately
+          setStatus('SCANNING');
+          setProgress({ message: 'Starting scan...', progress: 0 });
+          setQueueInfo(null);
         }
 
         // Update URL

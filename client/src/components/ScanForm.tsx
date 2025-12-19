@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Smartphone, Tablet, Monitor } from 'lucide-react';
+import { Smartphone, Tablet, Monitor, Lock } from 'lucide-react';
 
 interface ScanFormProps {
-    onStart: (url: string, devices: string[]) => void;
+    onStart: (url: string, devices: string[], pageLimit: number) => void;
 }
 
 interface Device {
@@ -26,6 +26,7 @@ const DEVICES: Device[] = [
 export const ScanForm: React.FC<ScanFormProps> = ({ onStart }) => {
     const [url, setUrl] = useState('');
     const [selectedDevices, setSelectedDevices] = useState<string[]>(['mobile', 'tablet-normal', 'desktop-normal']);
+    const [pageLimit, setPageLimit] = useState<number>(20);
     const [error, setError] = useState('');
 
     const toggleDevice = (deviceId: string) => {
@@ -54,7 +55,7 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onStart }) => {
         if (!url.startsWith('http')) {
             formattedUrl = `https://${url}`;
         }
-        onStart(formattedUrl, selectedDevices);
+        onStart(formattedUrl, selectedDevices, pageLimit);
     };
 
     return (
@@ -62,6 +63,24 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onStart }) => {
             <div className="hero-text">
                 <h2>Audit Your Website Instantly</h2>
                 <p>Enter a URL to get a comprehensive report on performance, SEO, accessibility, and potential errors.</p>
+            </div>
+
+            <div className="page-limit-selector">
+                <label htmlFor="page-limit">Page Limit</label>
+                <div className="select-wrapper">
+                    <select
+                        id="page-limit"
+                        value={pageLimit}
+                        onChange={(e) => setPageLimit(Number(e.target.value))}
+                        className="page-limit-dropdown"
+                    >
+                        <option value={5}>5 pages</option>
+                        <option value={20}>20 pages</option>
+                        <option value={50}>50 pages</option>
+                        <option value={-1} disabled>∞ Unlimited (Premium)</option>
+                    </select>
+                    <Lock size={16} className="dropdown-lock-icon" />
+                </div>
             </div>
 
             <div className="device-selector">
@@ -119,6 +138,79 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onStart }) => {
             color: var(--text-secondary);
             font-size: 1.1rem;
             margin-bottom: 3rem;
+        }
+
+        .page-limit-selector {
+            margin-bottom: 3rem;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .page-limit-selector label {
+            display: block;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+            text-align: center;
+        }
+
+        .select-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .page-limit-dropdown {
+            width: 100%;
+            padding: 1rem 3rem 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.2rem;
+        }
+
+        .page-limit-dropdown:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .page-limit-dropdown:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+        }
+
+        .page-limit-dropdown option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 0.5rem;
+        }
+
+        .page-limit-dropdown option:disabled {
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+
+        .dropdown-lock-icon {
+            position: absolute;
+            right: 2.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            pointer-events: none;
+            opacity: 0.6;
         }
 
         .device-selector {

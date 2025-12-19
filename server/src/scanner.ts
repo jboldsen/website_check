@@ -13,7 +13,8 @@ export async function runScan(
     scanId: string,
     io: Server,
     updateState: (update: any) => void,
-    selectedDevices: string[] = []
+    selectedDevices: string[] = [],
+    pageLimit: number = 20
 ) {
     const emitProgress = (message: string, progress: number) => {
         io.to(scanId).emit('scan:progress', { scanId, message, progress });
@@ -28,7 +29,7 @@ export async function runScan(
     // 1. Crawl
     // 1. Crawl
     emitProgress('Discovering pages...', 10);
-    const pages = await crawlSite(startUrl);
+    const pages = await crawlSite(startUrl, 3, pageLimit);
     emitProgress(`Found ${pages.length} pages.`, 20);
 
     const browser = await chromium.launch({

@@ -8,7 +8,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "https://zapmysite.com",
+        origin: ["http://localhost:5173", "https://zapmysite.com"],
         methods: ["GET", "POST"]
     }
 });
@@ -21,6 +21,7 @@ interface ScanState {
     id: string;
     url: string;
     devices?: string[];
+    pageLimit?: number;
     status: 'IDLE' | 'QUEUED' | 'SCANNING' | 'COMPLETE' | 'FAILED';
     progress: number;
     message: string;
@@ -32,7 +33,8 @@ interface ScanState {
 
 const scans = new Map<string, ScanState>();
 const scanQueue: string[] = [];
-let isScanning = false;
+const MAX_CONCURRENT_SCANS = 3;
+let activeScans = 0;
 
 // Track scan durations for wait time estimation
 const scanDurations: number[] = [];
@@ -53,8 +55,9 @@ function updateQueuePositions() {
     scanQueue.forEach((scanId, index) => {
         const scan = scans.get(scanId);
         if (scan && scan.status === 'QUEUED') {
-            const position = index + 1;
-            const estimatedWait = Math.round((position * avgDuration) / 1000); // in seconds
+            // Calculate position accounting for concurrent scans
+            const position = Math.max(1, index - (MAX_CONCURRENT_SCANS - 1));
+            const estimatedWait = Math.round((position * avgDuration) / (MAX_CONCURRENT_SCANS * 1000)); // in seconds
 
             scans.set(scanId, {
                 ...scan,
@@ -74,51 +77,59 @@ function updateQueuePositions() {
 
 // Main queue processing loop
 async function processQueue() {
-    if (isScanning || scanQueue.length === 0) {
-        return;
-    }
+    // Process multiple scans concurrently up to MAX_CONCURRENT_SCANS
+    while (activeScans < MAX_CONCURRENT_SCANS && scanQueue.length > 0) {
+        const scanId = scanQueue.shift();
+        if (!scanId) break;
 
-    const scanId = scanQueue.shift();
-    if (!scanId) return;
-
-    const scanState = scans.get(scanId);
-    if (!scanState) {
-        processQueue();
-        return;
-    }
-
-    isScanning = true;
-    const scanStartTime = Date.now();
-
-    const updateState = (update: Partial<ScanState>) => {
-        const current = scans.get(scanId);
-        if (current) {
-            scans.set(scanId, { ...current, ...update });
+        const scanState = scans.get(scanId);
+        if (!scanState) {
+            continue;
         }
-    };
 
-    updateState({ status: 'SCANNING', message: 'Starting scan...', progress: 0 });
-    io.to(scanId).emit('scan:progress', { scanId, message: 'Starting scan...', progress: 0 });
+        activeScans++;
 
-    // Update positions for remaining queued scans
-    updateQueuePositions();
+        // Update positions for remaining queued scans
+        updateQueuePositions();
 
-    try {
-        await runScan(scanState.url, scanId, io, updateState, scanState.devices || []);
+        // Run scan asynchronously without blocking other scans
+        // Use an IIFE with proper closure to capture scanId and scanState
+        ((currentScanId, currentScanState) => {
+            const scanStartTime = Date.now();
 
-        // Track scan duration
-        const scanDuration = Date.now() - scanStartTime;
-        scanDurations.push(scanDuration);
-        if (scanDurations.length > MAX_DURATION_SAMPLES) {
-            scanDurations.shift();
-        }
-    } catch (err) {
-        console.error(`Scan ${scanId} failed:`, err);
-        updateState({ status: 'FAILED', message: 'Scan failed due to server error.' });
-        io.to(scanId).emit('scan:error', { message: 'Internal Server Error' });
-    } finally {
-        isScanning = false;
-        processQueue();
+            const updateState = (update: Partial<ScanState>) => {
+                const current = scans.get(currentScanId);
+                if (current) {
+                    scans.set(currentScanId, { ...current, ...update });
+                }
+            };
+
+            updateState({ status: 'SCANNING', message: 'Starting scan...', progress: 0 });
+            io.to(currentScanId).emit('scan:progress', { scanId: currentScanId, message: 'Starting scan...', progress: 0 });
+
+            console.log(`[${currentScanId}] Starting scan for ${currentScanState.url}`);
+
+            // Execute the scan
+            runScan(currentScanState.url, currentScanId, io, updateState, currentScanState.devices || [], currentScanState.pageLimit || 20)
+                .then(() => {
+                    console.log(`[${currentScanId}] Scan completed successfully`);
+                    // Track scan duration
+                    const scanDuration = Date.now() - scanStartTime;
+                    scanDurations.push(scanDuration);
+                    if (scanDurations.length > MAX_DURATION_SAMPLES) {
+                        scanDurations.shift();
+                    }
+                })
+                .catch((err) => {
+                    console.error(`[${currentScanId}] Scan failed:`, err);
+                    updateState({ status: 'FAILED', message: 'Scan failed due to server error.' });
+                    io.to(currentScanId).emit('scan:error', { message: 'Internal Server Error' });
+                })
+                .finally(() => {
+                    activeScans--;
+                    processQueue();
+                });
+        })(scanId, scanState);
     }
 }
 
@@ -126,15 +137,15 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    service: 'scan-server',
-    uptime: process.uptime()
-  });
+    res.status(200).json({
+        status: 'ok',
+        service: 'scan-server',
+        uptime: process.uptime()
+    });
 });
 
 app.post('/api/scan', async (req, res) => {
-    const { url, devices } = req.body;
+    const { url, devices, pageLimit } = req.body;
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
     }
@@ -145,34 +156,36 @@ app.post('/api/scan', async (req, res) => {
 
     const scanId = Date.now().toString();
 
-    // Initialize state as QUEUED
-    const queuePosition = scanQueue.length + 1;
+    // Check if scan can start immediately or needs to be queued
+    const willStartImmediately = activeScans < MAX_CONCURRENT_SCANS;
+    const queuePosition = willStartImmediately ? undefined : Math.max(1, scanQueue.length + 1 - activeScans);
     const avgDuration = getAverageScanDuration();
-    const estimatedWait = Math.round((queuePosition * avgDuration) / 1000);
+    const estimatedWait = willStartImmediately ? undefined : Math.round(((queuePosition || 1) * avgDuration) / (MAX_CONCURRENT_SCANS * 1000));
 
     scans.set(scanId, {
         id: scanId,
         url,
         devices,
-        status: 'QUEUED',
+        pageLimit: pageLimit || 20, // Default to 20 if not provided
+        status: willStartImmediately ? 'SCANNING' : 'QUEUED',
         progress: 0,
-        message: 'Waiting in queue...',
+        message: willStartImmediately ? 'Starting scan...' : 'Waiting in queue...',
         report: null,
         timestamp: Date.now(),
-        queuePosition,
-        estimatedWaitTime: estimatedWait
+        queuePosition: willStartImmediately ? undefined : queuePosition,
+        estimatedWaitTime: willStartImmediately ? undefined : estimatedWait
     });
 
     scanQueue.push(scanId);
 
-    // Try to process queue
+    // Try to process queue immediately
     processQueue();
 
     res.json({
-        message: 'Scan queued',
+        message: willStartImmediately ? 'Scan starting' : 'Scan queued',
         scanId,
-        queuePosition,
-        estimatedWaitTime: estimatedWait
+        queuePosition: willStartImmediately ? undefined : queuePosition,
+        estimatedWaitTime: willStartImmediately ? undefined : estimatedWait
     });
 });
 
